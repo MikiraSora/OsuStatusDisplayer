@@ -4,12 +4,11 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Test2
+namespace OpenGLF
 {
-    class Program
+    [Serializable]
+    public class GameObjectList : List<GameObject>
     {
-        static void Main(string[] args)
-        {
-        }
+
     }
 }
