@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using OpenGLF;
 using OpenTK;
 using System.Threading;
+using osu_database_reader;
 
 namespace Test2
 {
@@ -66,6 +67,9 @@ namespace Test2
             GameObject test;
             Font font;
 
+            OsuDb osuDataBase;
+            bool ableDataBase = false;
+
             OsuListenner listener = new OsuListenner();
 
             Thread thread = null;
@@ -80,11 +84,23 @@ namespace Test2
 
             string info = "";
 
+            string beatmapTitle = "";
+            string beatmapDiff = "";
+
             bool HpVisiable=true,AccVisiable=true;
 
             public MainWindow()
             {
                 engine.afterDraw += Engine_afterDraw;
+
+                Console.WriteLine("loading osu!.db");
+                try
+                {
+                    osuDataBase = OsuDb.Read(@"g:\osu!\osu!.db");
+                    Console.WriteLine("loading database finished! db version {0},beatmap caches count {1}", osuDataBase.OsuVersion, osuDataBase.Beatmaps.Count);
+                    ableDataBase = true;
+                }
+                catch (Exception e) { Console.WriteLine("load failed! "+e.Message); }
             }
 
             private void Engine_afterDraw()
@@ -93,6 +109,11 @@ namespace Test2
 
                 lock (lockObj)
                 {
+
+                    Drawing.drawText(new Vector(0, Height - 25), Vector.zero, new Vector(1, 1), 0, 220, 50,
+                    string.Format("{1}[{2}]\tHP:{0}",HpRecorder.Count==0?"??":(Math.Truncate(HpRecorder.Get(HpRecorder.Count - 1))).ToString(), beatmapTitle, beatmapDiff),
+                    new Color(255, 255, 0, 125), 15, font);
+
                     if (HpVisiable)
                         DrawHpLines();
                     if (AccVisiable)
@@ -183,6 +204,21 @@ namespace Test2
             private void Listener_onChangeBeatmapId(int id)
             {
                 Console.WriteLine("beatmapId :" + id);
+                if (ableDataBase)
+                    ThreadPool.QueueUserWorkItem(state => {
+                        var list = osuDataBase.Beatmaps;
+                    Parallel.For(0, list.Count, (i, LoopState) =>{
+
+                        if (list[i].BeatmapId == id)
+                        {
+                            Listener_onUpdateTitle(list[i].Artist + " - " + list[i].Title);
+                            Listener_onUpdateDiff(list[i].Difficulty);
+
+                            LoopState.Break();
+                        }
+
+                    });
+                    }, id);
             }
 
             private void Listener_onChangeBeatmapSetId(int setId)
@@ -202,12 +238,22 @@ namespace Test2
 
             private void Listener_onUpdateDiff(string diffName)
             {
-                Console.WriteLine("diff :" + diffName);
+                /*
+                if (beatmapDiff.Trim() == diffName.Trim())
+                    return;
+
+                Console.WriteLine("diff :" + diffName); 
+                beatmapDiff = diffName;*/
             }
 
             private void Listener_onUpdateTitle(string title)
             {
+                /*
+                if (beatmapTitle == title)
+                    return;
+
                 Console.WriteLine("title :" + title);
+                beatmapTitle = title;*/
             }
 
             private void Listener_onUpdateHP(double hp)
@@ -216,7 +262,6 @@ namespace Test2
                 {
                     HpRecorder.Push(Convert.ToSingle(hp));
                 }
-                Console.WriteLine("hp:{0:F2},",hp);
             }
 
             private void Listener_onUpdateACC(double acc)
@@ -224,16 +269,15 @@ namespace Test2
                 float NowAcc = Convert.ToSingle(acc);
                 float divc = NowAcc - Prev_Acc;
                 Acc_AddCount++;
-                Acc_Scale = Convert.ToSingle(Math.Pow(Acc_AddCount,1.01))-1;
 
-                if (Math.Abs(divc) > Acc_Scale)
-                    divc = (Math.Sign(divc)<0?-1:1)*Acc_Scale;
+                float val = 1 - Convert.ToSingle(Math.Exp(-Math.Abs(divc * 2)));
+                if (divc < 0) val = -val;
+
                 lock (lockObj)
                 {
-                    AccRecorder.Push(divc);
+                    AccRecorder.Push(divc * val);
                 }
                 Prev_Acc = NowAcc;
-                Console.WriteLine("acc:{0:F2},", acc);
             }
 
             private void Listener_onConnectLost()
