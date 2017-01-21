@@ -43,6 +43,8 @@ namespace Test2
             }
         }
 
+        public void Clear() { list.Clear(); }
+
         public void Push(T item)
         {
             list.Add(item);
@@ -70,9 +72,13 @@ namespace Test2
             OsuDb osuDataBase;
             bool ableDataBase = false;
 
+            bool isVision = true;
+
             OsuListenner listener = new OsuListenner();
 
             Thread thread = null;
+
+            volatile float passTime = 0;
 
             object lockObj = new object();
 
@@ -105,12 +111,14 @@ namespace Test2
 
             private void Engine_afterDraw()
             {
-                Drawing.drawText(new Vector(Width-220, Height-25), Vector.zero, new Vector(1, 1), 0, 220, 50, info ,new Color(255,255,0,125), 15, font);
+                if (!isVision)
+                    return;
+                //Drawing.drawText(new Vector(Width-220, Height-25), Vector.zero, new Vector(1, 1), 0, 220, 50, info ,new Color(255,255,0,125), 15, font);
 
                 lock (lockObj)
                 {
 
-                    Drawing.drawText(new Vector(0, Height - 25), Vector.zero, new Vector(1, 1), 0, 220, 50,
+                    Drawing.drawText(new Vector(0, Height - 25), Vector.zero, new Vector(1, 1), 0, Width, 50,
                     string.Format("{1}[{2}]\tHP:{0}",HpRecorder.Count==0?"??":(Math.Truncate(HpRecorder.Get(HpRecorder.Count - 1))).ToString(), beatmapTitle, beatmapDiff),
                     new Color(255, 255, 0, 125), 15, font);
 
@@ -125,6 +133,7 @@ namespace Test2
             {
                 base.OnUpdateFrame(e);
                 info =String.Format("f{0}/u{1:F2}ms/r{2:F2}ms",Math.Truncate(1.0f/(UpdateTime + RenderTime)),UpdateTime*1000,RenderTime*1000);
+                passTime+=Convert.ToSingle(UpdateTime + RenderTime);
             }
 
             protected override void OnLoad(EventArgs e)
@@ -203,22 +212,22 @@ namespace Test2
             #region OsuListenerCallback
             private void Listener_onChangeBeatmapId(int id)
             {
-                Console.WriteLine("beatmapId :" + id);
                 if (ableDataBase)
-                    ThreadPool.QueueUserWorkItem(state => {
+                {
+                    ThreadPool.QueueUserWorkItem(state =>
+                    {
                         var list = osuDataBase.Beatmaps;
-                    Parallel.For(0, list.Count, (i, LoopState) =>{
-
-                        if (list[i].BeatmapId == id)
+                        Parallel.For(0, list.Count, (i, LoopState) =>
                         {
-                            Listener_onUpdateTitle(list[i].Artist + " - " + list[i].Title);
-                            Listener_onUpdateDiff(list[i].Difficulty);
-
-                            LoopState.Break();
-                        }
-
-                    });
+                            if (list[i].BeatmapId == id)
+                            {
+                                Listener_onUpdateTitle(list[i].ArtistUnicode.Trim().Length==0?list[i].Artist: list[i].ArtistUnicode + " - " + (list[i].TitleUnicode.Trim().Length == 0 ? list[i].Title : list[i].TitleUnicode));
+                                Listener_onUpdateDiff(list[i].Difficulty);
+                                LoopState.Break();
+                            }
+                        });
                     }, id);
+                }
             }
 
             private void Listener_onChangeBeatmapSetId(int setId)
@@ -242,8 +251,8 @@ namespace Test2
                 if (beatmapDiff.Trim() == diffName.Trim())
                     return;
 
-                Console.WriteLine("diff :" + diffName); 
-                beatmapDiff = diffName;*/
+                Console.WriteLine("diff :" + diffName); */
+                beatmapDiff = diffName;
             }
 
             private void Listener_onUpdateTitle(string title)
@@ -252,15 +261,35 @@ namespace Test2
                 if (beatmapTitle == title)
                     return;
 
-                Console.WriteLine("title :" + title);
-                beatmapTitle = title;*/
+                Console.WriteLine("title :" + title);*/
+                beatmapTitle = title;
             }
 
+            float prev_hp = 0;
             private void Listener_onUpdateHP(double hp)
             {
-                lock (lockObj)
+                float hpf = Convert.ToSingle(hp);
+
+                if (Math.Abs(hpf - prev_hp) < 0.001)
                 {
-                    HpRecorder.Push(Convert.ToSingle(hp));
+                    if (passTime > 1&&isVision)
+                    {
+                        isVision = false;
+                        HpRecorder.Clear();
+                        AccRecorder.Clear();
+                        Console.WriteLine("Hide");
+                    }
+                }
+                else
+                {
+                    //HP改变，说明在游戏中
+                    passTime = 0;//刷新累积
+                    isVision = true;
+                    lock (lockObj)
+                    {
+                        HpRecorder.Push(hpf);
+                        prev_hp = hpf;
+                    }
                 }
             }
 
