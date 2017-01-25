@@ -15,7 +15,7 @@ namespace Test2
         Thread runThread = null;
 
         double currentAcc, currentHp;
-        int beatmapId, beatmapSetId;
+        int beatmapId, beatmapSetId,mods=0;
         string title = "", diffName = "";
 
         public OsuListenner()
@@ -166,11 +166,31 @@ namespace Test2
                         }
                         break;
 
+                    case 'c': //Combo
+                        if (part.Length > 1 && Int32.TryParse(part.Substring(1), out id))
+                        {
+                            onUpdateCombo(id);
+                        }
+                        break;
+
+                    case 'm': //Mods
+                        if (part.Length > 1 && Int32.TryParse(part.Substring(1), out id))
+                        {
+                            if (mods != id)
+                            {
+                                onChangeMods(id);
+                                mods = id;
+                            }
+                        }
+                        break;
+
                     default:
                         Console.WriteLine("unknown part:{0}",part);
                         break;
                 }
             }
+
+            onUpdateFinish();
         }
 
         #region TriggerEvent
@@ -194,6 +214,12 @@ namespace Test2
         public event OnChangeBeatmapId onChangeBeatmapId;
         public delegate void OnChangeBeatmapSetId(int setId);
         public event OnChangeBeatmapSetId onChangeBeatmapSetId;
-#endregion
+        public delegate void OnUpdateCombo(int combo);
+        public event OnUpdateCombo onUpdateCombo;
+        public delegate void OnChangeMods(int mods);
+        public event OnChangeMods onChangeMods;
+        public delegate void OnUpdateFinish();
+        public event OnUpdateFinish onUpdateFinish;
+        #endregion
     }
 }

@@ -66,8 +66,11 @@ namespace Test2
     {
         class MainWindow : Window
         {
+            #region 定义区
             GameObject test;
             Font font;
+
+            Frame currentFrame = new Frame();
 
             OsuDb osuDataBase;
             bool ableDataBase = false;
@@ -86,7 +89,12 @@ namespace Test2
             float Acc_Scale = 0.5f;
             int Acc_AddCount = 0;
 
-            CapicityList<float> HpRecorder=new CapicityList<float>(100), AccRecorder = new CapicityList<float>(100);
+            ModsInfo mod = new ModsInfo();
+
+            int combo = 0;
+            const int BigBreakComboLimit= 200,IgnoredComboLimit=20;
+
+            CapicityList<Frame> frameRecorder = new CapicityList<Frame>(100);
 
             string info = "";
 
@@ -94,6 +102,8 @@ namespace Test2
             string beatmapDiff = "";
 
             bool HpVisiable=true,AccVisiable=true;
+
+#endregion
 
             public MainWindow()
             {
@@ -119,7 +129,11 @@ namespace Test2
                 {
 
                     Drawing.drawText(new Vector(0, Height - 25), Vector.zero, new Vector(1, 1), 0, Width, 50,
-                    string.Format("{1}[{2}]\tHP:{0}",HpRecorder.Count==0?"??":(Math.Truncate(HpRecorder.Get(HpRecorder.Count - 1))).ToString(), beatmapTitle, beatmapDiff),
+                    string.Format("{0}[{1}]",beatmapTitle,beatmapDiff),
+                    new Color(255, 255, 0, 125), 15, font);
+
+                    Drawing.drawText(new Vector(0, Height - 50), Vector.zero, new Vector(1, 1), 0, Width, 50,
+                    string.Format("Hp:{0}\tMods:{1}", frameRecorder.Count == 0 ? "??" : (Math.Truncate(frameRecorder.Get(frameRecorder.Count - 1).hp)).ToString(),mod.Name),
                     new Color(255, 255, 0, 125), 15, font);
 
                     if (HpVisiable)
@@ -153,6 +167,9 @@ namespace Test2
                 listener.onUpdateHP += Listener_onUpdateHP;
                 listener.onUpdateTitle += Listener_onUpdateTitle;
                 listener.onUpdateDiff += Listener_onUpdateDiff;
+                listener.onChangeMods += Listener_onChangeMods;
+                listener.onUpdateCombo += Listener_onUpdateCombo;
+                listener.onUpdateFinish += Listener_onUpdateFinish;
 
                 thread = new Thread(() => {
                     listener.Start();
@@ -166,17 +183,17 @@ namespace Test2
                 base.OnRenderFrame(e);
             }
 
-            #region DrawHp/AccLines
+            #region DrawHp/AccLines/ComboBreak
 
             protected void DrawHpLines()
             {
                 float Now, Prev;
-                for(int i = HpRecorder.Count-1; i >0; i--)
+                for(int i = frameRecorder.Count-1; i >0; i--)
                 {
-                    Now = HpRecorder.Get(i);
-                    Prev = HpRecorder.Get(i - 1);
-                    Vector startVec = MapPoint(i / (float)HpRecorder.Capacity, 1-Now / 200.0f);
-                    Vector endVec = MapPoint((i - 1) / (float)HpRecorder.Capacity, 1- Prev / 200.0f);
+                    Now = frameRecorder.Get(i).hp;
+                    Prev = frameRecorder.Get(i - 1).hp;
+                    Vector startVec = MapPoint(i / (float)frameRecorder.Capacity, 1-Now / 200.0f);
+                    Vector endVec = MapPoint((i - 1) / (float)frameRecorder.Capacity, 1- Prev / 200.0f);
 
                     Drawing.drawLine(
                         startVec,
@@ -190,16 +207,24 @@ namespace Test2
             protected void DrawAccLines()
             {
                 float Now, Prev;
-                for (int i = AccRecorder.Count - 1; i > 0; i--)
+                int comboIndex = 0;
+
+                for (int i = frameRecorder.Count - 1; i > 0; i--)
                 {
-                    Now = AccRecorder.Get(i);
-                    Prev = AccRecorder.Get(i - 1);
+                    Now = frameRecorder.Get(i).acc;
+                    Prev = frameRecorder.Get(i - 1).acc;
                     Drawing.drawLine(
-                        MapPoint(i / (float)AccRecorder.Capacity, ((Now/Acc_Scale)/2+0.5f)),
-                        MapPoint((i - 1) / (float)AccRecorder.Capacity, (Prev / Acc_Scale) / 2 + 0.5f),
+                        MapPoint(i / (float)frameRecorder.Capacity, ((Now/Acc_Scale)/2+0.5f)),
+                        MapPoint((i - 1) / (float)frameRecorder.Capacity, (Prev / Acc_Scale) / 2 + 0.5f),
                         2.5f,
                         Color.blue
                         );
+
+                    if (frameRecorder.Get(i).combo < frameRecorder.Get(i - 1).combo)
+                    {
+                        //符合条件,绘制comboBreak
+                        Drawing.drawCircle(MapPoint(i / (float)frameRecorder.Capacity, ((Now / Acc_Scale) / 2 + 0.5f)), 5, true, 5, Color.red);
+                    }
                 }
             }
 #endregion
@@ -210,6 +235,39 @@ namespace Test2
             }
 
             #region OsuListenerCallback
+
+            private void Listener_onUpdateFinish()
+            {
+                if (!isVision)
+                {
+                    if(currentFrame.hp==0&&currentFrame.acc==0)
+                        frameRecorder.Clear();
+                    return;
+                }
+                frameRecorder.Push(currentFrame);
+                currentFrame = new Frame();
+                /*
+                Console.WriteLine("count {0}:{1}\t{2}\t{3}",
+                    frameRecorder.Count,
+                    frameRecorder.Get(frameRecorder.Count-1).hp,
+                    frameRecorder.Get(frameRecorder.Count - 1).acc,
+                    frameRecorder.Get(frameRecorder.Count - 1).combo);
+                    */
+            }
+
+            private void Listener_onUpdateCombo(int combo)
+            {
+                lock(lockObj){
+                    currentFrame.combo = combo;
+                }
+            }
+
+            private void Listener_onChangeMods(int mods)
+            {
+                this.mod.Mod = (ModsInfo.Mods)mods;
+                Console.WriteLine("Mods : " + this.mod.ShortName);
+            }
+
             private void Listener_onChangeBeatmapId(int id)
             {
                 if (ableDataBase)
@@ -247,21 +305,11 @@ namespace Test2
 
             private void Listener_onUpdateDiff(string diffName)
             {
-                /*
-                if (beatmapDiff.Trim() == diffName.Trim())
-                    return;
-
-                Console.WriteLine("diff :" + diffName); */
                 beatmapDiff = diffName;
             }
 
             private void Listener_onUpdateTitle(string title)
             {
-                /*
-                if (beatmapTitle == title)
-                    return;
-
-                Console.WriteLine("title :" + title);*/
                 beatmapTitle = title;
             }
 
@@ -275,8 +323,6 @@ namespace Test2
                     if (passTime > 1&&isVision)
                     {
                         isVision = false;
-                        HpRecorder.Clear();
-                        AccRecorder.Clear();
                         Console.WriteLine("Hide");
                     }
                 }
@@ -287,7 +333,7 @@ namespace Test2
                     isVision = true;
                     lock (lockObj)
                     {
-                        HpRecorder.Push(hpf);
+                        currentFrame.hp = hpf;
                         prev_hp = hpf;
                     }
                 }
@@ -304,7 +350,7 @@ namespace Test2
 
                 lock (lockObj)
                 {
-                    AccRecorder.Push(divc * val);
+                    currentFrame.acc=(divc * val);
                 }
                 Prev_Acc = NowAcc;
             }
