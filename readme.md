@@ -61,3 +61,6 @@ public enum Mods
 
 
 ####[示例代码](http://git.oschina.net/remilia/osuSync/blob/dpdev/OtherPlugins/OutputSever/OsuStatusOutputSever.cs)
+
+####截图<br>
+![截图](https://github.com/MikiraSora/OsuStatusDisplayer/blob/master/sc.png)
